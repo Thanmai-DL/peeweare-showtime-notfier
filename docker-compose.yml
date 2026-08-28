@@ -11,6 +11,8 @@ services:
             - NTFY_URL=${NTFY_URL}
             - NTFY_TOKEN=${NTFY_TOKEN}
             - JOB_INTERVAL_SECONDS=${JOB_INTERVAL_SECONDS}
+            - URL=${URL}
+            - HEADERS=${HEADERS}
         ports:
             - "8000:80"
         depends_on:
