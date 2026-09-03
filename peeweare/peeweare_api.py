@@ -40,17 +40,31 @@ class PeeweareAPI:
             ) from e
         return [MoviesShowing(**movie) for movie in data]
 
-    async def _extract_dates(self, data: list[dict]) -> list:
+    async def _check_dates_released(self, date: str, theater_id: str) -> bool:
         """
-        Extract date values from the provided list of dictionaries into a list.
+        Validate if the given date is available in csession.
 
         Args:
-            data (list[dict]): A list of dictionaries containing date information.
+            date (str): The date to check (format: YYYY-MM-DD).
+            theater_id (str): The ID of the theater.
 
         Returns:
-            list: A list of extracted dates.
+            bool: True if the date is in the list of released dates, False otherwise.
         """
-        return [item.get("dt") for item in data]
+        response = await self._rest_adapter.post("/csessions", {"cid": theater_id})
+        if response.data["result"] == "success":
+            try:
+                dates = [item.get("dt") for item in response.data["output"]["days"]]
+            except Exception as e:
+                self._logger.error(msg=str(e))
+                raise PeeweareException(
+                    f"Error extracting dates from response for theater_id {theater_id}: {e}"
+                ) from e
+            return date in dates
+        else:
+            raise PeeweareException(
+                f"Failed to fetch csession for theater_id {theater_id} due to API response: {response.data.get('result', 'Unknown error')} with message: {response.data.get('message', 'N/A')}"
+            )
 
     async def nowshowing(self) -> list[MoviesShowing]:
         """
@@ -99,9 +113,11 @@ class PeeweareAPI:
         self.movie_id = movie_id
         showtimes = Showtime(shows={})
 
-        response = await self._rest_adapter.post("/csessions", {"cid": theater_id})
-        if response.data["result"] == "success":
-            if date in await self._extract_dates(response.data["output"]["days"]):
+        if await self._check_dates_released(date, theater_id):
+            response = await self._rest_adapter.post(
+                "/csessions", {"cid": theater_id, "dated": date}
+            )
+            if response.data["result"] == "success":
                 try:
                     data = response.data["output"]["cinemaMovieSessions"]
                 except TypeError:
@@ -124,11 +140,11 @@ class PeeweareAPI:
                             ]
                 return showtimes
             else:
-                self._logger.warning(
-                    msg=f"Showtimes for movie_id {movie_id} in theater_id {theater_id} on {date} not updated yet"
+                raise PeeweareException(
+                    f"Failed to fetch showtimes for movie_id {movie_id} in theater_id {theater_id} on {date} due to API response: {response.data.get('result', 'Unknown error')} with message: {response.data.get('message', 'N/A')}"
                 )
-                return None
         else:
-            raise PeeweareException(
-                f"Failed to fetch showtimes for movie_id {movie_id} in theater_id {theater_id} on {date} due to API response: {response.data.get('result', 'Unknown error')} with message: {response.data.get('message', 'N/A')}"
+            self._logger.warning(
+                msg=f"Showtimes for movie_id {movie_id} in theater_id {theater_id} on {date} not updated yet"
             )
+            return None
