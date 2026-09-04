@@ -1,8 +1,10 @@
+import json
 import logging
 import os
 from typing import Annotated, Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from bson import json_util
 from dotenv import load_dotenv
 from fastapi import APIRouter, Body, Depends, Query, status
 
@@ -248,8 +250,15 @@ async def delete_monitoring_job(
 )
 async def list_monitoring_jobs(
     monitoring_collection=Depends(get_monitoring_collection),
-) -> Any:
+) -> list[dict]:
     """
     List all monitoring jobs.
+
+    Returns:
+        List[dict]: A list of all monitoring jobs in the database.
     """
-    return await monitoring_collection.find().to_list(length=100)
+    cursor = monitoring_collection.find({})
+    result = []
+    async for batch in cursor:
+        result.append(json.loads(json_util.dumps(batch)))
+    return result
